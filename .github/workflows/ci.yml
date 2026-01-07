@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        module: [rate-limit, add-header]
+        version: [v1, v2, v3]
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+
+    - name: Verify module path
+      run: |
+        cd ${{ matrix.module }}/${{ matrix.version }}
+        MODULE_PATH=$(grep '^module ' go.mod | awk '{print $2}')
+        EXPECTED="github.com/example/go-multi-major-modules/${{ matrix.module }}/${{ matrix.version }}"
+        if [ "$MODULE_PATH" != "$EXPECTED" ]; then
+          echo "Module path mismatch: expected $EXPECTED, got $MODULE_PATH"
+          exit 1
+        fi
+
+    - name: Run go mod tidy
+      run: |
+        cd ${{ matrix.module }}/${{ matrix.version }}
+        go mod tidy
+
+    - name: Check formatting
+      run: |
+        cd ${{ matrix.module }}/${{ matrix.version }}
+        if [ "$(gofmt -l .)" ]; then
+          gofmt -l .
+          exit 1
+        fi
+
+    - name: Run tests
+      run: |
+        cd ${{ matrix.module }}/${{ matrix.version }}
+        go test ./...
