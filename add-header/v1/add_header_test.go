@@ -4,7 +4,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	addheader "github.com/dakshithas/go-multi-major-modules/add-header/src"
+	addheader "github.com/DakshithaS/go-multi-major-modules/add-header/src"
 )
 
 func TestAddHeader(t *testing.T) {
