@@ -23,9 +23,14 @@ jobs:
 
     - name: Verify module path
       run: |
-        cd ${{ matrix.module }}/${{ matrix.version }}
+        if [ "${{ matrix.version }}" = "v1" ]; then
+          cd ${{ matrix.module }}
+          EXPECTED="github.com/DakshithaS/go-multi-major-modules/${{ matrix.module }}"
+        else
+          cd ${{ matrix.module }}/${{ matrix.version }}
+          EXPECTED="github.com/DakshithaS/go-multi-major-modules/${{ matrix.module }}/${{ matrix.version }}"
+        fi
         MODULE_PATH=$(grep '^module ' go.mod | awk '{print $2}')
-        EXPECTED="github.com/example/go-multi-major-modules/${{ matrix.module }}/${{ matrix.version }}"
         if [ "$MODULE_PATH" != "$EXPECTED" ]; then
           echo "Module path mismatch: expected $EXPECTED, got $MODULE_PATH"
           exit 1
@@ -33,12 +38,20 @@ jobs:
 
     - name: Run go mod tidy
       run: |
-        cd ${{ matrix.module }}/${{ matrix.version }}
+        if [ "${{ matrix.version }}" = "v1" ]; then
+          cd ${{ matrix.module }}
+        else
+          cd ${{ matrix.module }}/${{ matrix.version }}
+        fi
         go mod tidy
 
     - name: Check formatting
       run: |
-        cd ${{ matrix.module }}/${{ matrix.version }}
+        if [ "${{ matrix.version }}" = "v1" ]; then
+          cd ${{ matrix.module }}
+        else
+          cd ${{ matrix.module }}/${{ matrix.version }}
+        fi
         if [ "$(gofmt -l .)" ]; then
           gofmt -l .
           exit 1
@@ -46,5 +59,9 @@ jobs:
 
     - name: Run tests
       run: |
-        cd ${{ matrix.module }}/${{ matrix.version }}
+        if [ "${{ matrix.version }}" = "v1" ]; then
+          cd ${{ matrix.module }}
+        else
+          cd ${{ matrix.module }}/${{ matrix.version }}
+        fi
         go test ./...
