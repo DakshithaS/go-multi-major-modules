@@ -4,7 +4,7 @@ This repository demonstrates how to maintain multiple major versions of multiple
 
 ## Why /vN in Module Paths?
 
-Go requires the `/vN` suffix in module paths for major versions greater than 1 to enable semantic versioning. This allows different major versions to coexist without conflicts, as each version is treated as a separate module. For example, `github.com/dakshithas/go-multi-major-modules/rate-limit/v2` is distinct from `github.com/dakshithas/go-multi-major-modules/rate-limit/v1`.
+Go requires the `/vN` suffix in module paths for major versions greater than 1 to enable semantic versioning. This allows different major versions to coexist without conflicts, as each version is treated as a separate module. For example, `github.com/dakshithas/go-multi-major-modules/rate-limit/v2` is distinct from `github.com/dakshithas/go-multi-major-modules/rate-limit`.
 
 ## Why Version Folders Instead of Branches or Separate Repositories?
 
@@ -45,7 +45,7 @@ Avoid this approach when:
 To use a specific version of a module, import it with the appropriate `/vN` suffix:
 
 ```go
-import "github.com/dakshithas/go-multi-major-modules/rate-limit/v1"
+import "github.com/dakshithas/go-multi-major-modules/rate-limit"
 // or
 import "github.com/dakshithas/go-multi-major-modules/rate-limit/v2"
 // or
