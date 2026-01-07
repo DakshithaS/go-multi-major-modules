@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DakshithaS/go-multi-major-modules/rate-limit/v2/src"
+	ratelimit "github.com/DakshithaS/go-multi-major-modules/rate-limit/v2/src"
 )
 
 func TestRateLimiter(t *testing.T) {
