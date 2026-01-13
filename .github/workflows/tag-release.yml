@@ -1,0 +1,170 @@
+name: Create Module Tags
+
+on:
+  workflow_dispatch:
+    inputs:
+      policy_name:
+        description: 'Policy/Module name (e.g., add-header, cors, rate-limit)'
+        required: true
+        type: choice
+        options:
+          - add-header
+          - cors
+          - rate-limit
+      version:
+        description: 'Major version (e.g., v1, v2, v3)'
+        required: true
+        type: choice
+        options:
+          - v1
+          - v2
+          - v3
+      patch_version:
+        description: 'Patch version (e.g., 0.0, 0.1, 1.0)'
+        required: true
+        default: '0.0'
+        type: string
+      dry_run:
+        description: 'Dry run - show what would be tagged without creating tags'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  validate-and-tag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for proper tagging
+      
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+      
+      - name: Validate module exists
+        id: validate
+        run: |
+          POLICY_NAME="${{ github.event.inputs.policy_name }}"
+          VERSION="${{ github.event.inputs.version }}"
+          PATCH_VERSION="${{ github.event.inputs.patch_version }}"
+          
+          # Check if the module directory exists
+          MODULE_PATH="${POLICY_NAME}/${VERSION}"
+          if [ ! -d "$MODULE_PATH" ]; then
+            echo "❌ Module directory $MODULE_PATH does not exist"
+            exit 1
+          fi
+          
+          # Check if go.mod exists
+          if [ ! -f "$MODULE_PATH/go.mod" ]; then
+            echo "❌ go.mod not found in $MODULE_PATH"
+            exit 1
+          fi
+          
+          # Validate go.mod content
+          cd "$MODULE_PATH"
+          if ! go mod verify; then
+            echo "❌ go.mod verification failed for $MODULE_PATH"
+            exit 1
+          fi
+          
+          # Run tests if they exist
+          if ls *_test.go 1> /dev/null 2>&1; then
+            echo "🧪 Running tests for $MODULE_PATH"
+            go test ./...
+          fi
+          
+          cd ../..
+          
+          # Generate tag name
+          TAG_NAME="${POLICY_NAME}/${VERSION}.${PATCH_VERSION}"
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "module_path=$MODULE_PATH" >> $GITHUB_OUTPUT
+          
+          echo "✅ Module validation passed for $MODULE_PATH"
+          echo "📝 Will create tag: $TAG_NAME"
+      
+      - name: Check if tag already exists
+        run: |
+          TAG_NAME="${{ steps.validate.outputs.tag_name }}"
+          
+          if git tag -l | grep -q "^$TAG_NAME$"; then
+            echo "⚠️  Tag $TAG_NAME already exists"
+            echo "🏷️  Existing tags for this module:"
+            git tag -l | grep "^${{ github.event.inputs.policy_name }}/" | sort -V
+            exit 1
+          else
+            echo "✅ Tag $TAG_NAME is available"
+          fi
+      
+      - name: Show what would be tagged (Dry Run)
+        if: ${{ github.event.inputs.dry_run == 'true' }}
+        run: |
+          TAG_NAME="${{ steps.validate.outputs.tag_name }}"
+          MODULE_PATH="${{ steps.validate.outputs.module_path }}"
+          COMMIT_SHA=$(git rev-parse HEAD)
+          
+          echo "🏃‍♂️ DRY RUN MODE - No tags will be created"
+          echo ""
+          echo "📋 Summary:"
+          echo "  Module: $MODULE_PATH"
+          echo "  Tag: $TAG_NAME"
+          echo "  Commit: $COMMIT_SHA"
+          echo "  Date: $(date)"
+          echo ""
+          echo "🔍 Recent commits in module directory:"
+          git log --oneline -5 --pretty=format:"%h %s" -- "$MODULE_PATH" || echo "No commits found for this module path"
+          echo ""
+          echo "📦 go.mod content:"
+          cat "$MODULE_PATH/go.mod"
+      
+      - name: Create and push tag
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        run: |
+          TAG_NAME="${{ steps.validate.outputs.tag_name }}"
+          MODULE_PATH="${{ steps.validate.outputs.module_path }}"
+          COMMIT_SHA=$(git rev-parse HEAD)
+          
+          # Create annotated tag with message
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          TAG_MESSAGE="Release $TAG_NAME
+          
+          Module: $MODULE_PATH
+          Commit: $COMMIT_SHA
+          
+          Changes in this release:
+          $(git log --oneline -5 --pretty=format:"- %s" -- "$MODULE_PATH" || echo "- Initial release")"
+          
+          git tag -a "$TAG_NAME" -m "$TAG_MESSAGE"
+          git push origin "$TAG_NAME"
+          
+          echo "✅ Created and pushed tag: $TAG_NAME"
+      
+      - name: Create release summary
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        run: |
+          TAG_NAME="${{ steps.validate.outputs.tag_name }}"
+          MODULE_PATH="${{ steps.validate.outputs.module_path }}"
+          
+          echo "🎉 Successfully created tag: $TAG_NAME"
+          echo ""
+          echo "📦 Module Information:"
+          echo "  Path: $MODULE_PATH"
+          echo "  Go Module: $(grep '^module' $MODULE_PATH/go.mod | cut -d' ' -f2)"
+          echo ""
+          echo "📋 Usage:"
+          echo "  go get github.com/DakshithaS/go-multi-major-modules/$TAG_NAME"
+          echo ""
+          echo "🔗 Import in Go code:"
+          echo "  import \"github.com/DakshithaS/go-multi-major-modules/${{ github.event.inputs.policy_name }}/${{ github.event.inputs.version }}\""
+          echo ""
+          echo "🏷️  All tags for this module:"
+          git tag -l | grep "^${{ github.event.inputs.policy_name }}/" | sort -V || echo "No other tags found"

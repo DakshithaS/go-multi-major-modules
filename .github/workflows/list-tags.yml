@@ -1,0 +1,165 @@
+name: List Module Tags
+
+on:
+  workflow_dispatch:
+    inputs:
+      policy_name:
+        description: 'Policy/Module name (optional - leave empty for all modules)'
+        required: false
+        type: choice
+        options:
+          - ''
+          - add-header
+          - cors
+          - rate-limit
+      action:
+        description: 'Action to perform'
+        required: true
+        type: choice
+        default: 'list'
+        options:
+          - list
+          - list-latest
+          - validate-modules
+
+jobs:
+  manage-tags:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history and tags
+      
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+      
+      - name: List all module tags
+        if: ${{ github.event.inputs.action == 'list' && github.event.inputs.policy_name == '' }}
+        run: |
+          echo "🏷️  All module tags in repository:"
+          echo ""
+          
+          # Get all tags and group by module
+          for module in add-header cors rate-limit; do
+            echo "📦 $module:"
+            tags=$(git tag -l | grep "^$module/" | sort -V || true)
+            if [ -z "$tags" ]; then
+              echo "   No tags found"
+            else
+              echo "$tags" | sed 's/^/   /'
+            fi
+            echo ""
+          done
+      
+      - name: List specific module tags
+        if: ${{ github.event.inputs.action == 'list' && github.event.inputs.policy_name != '' }}
+        run: |
+          POLICY_NAME="${{ github.event.inputs.policy_name }}"
+          echo "🏷️  Tags for module: $POLICY_NAME"
+          echo ""
+          
+          tags=$(git tag -l | grep "^$POLICY_NAME/" | sort -V || true)
+          if [ -z "$tags" ]; then
+            echo "   No tags found for $POLICY_NAME"
+          else
+            echo "$tags" | while read tag; do
+              # Get tag date and message
+              tag_date=$(git log -1 --format=%ai $tag 2>/dev/null || echo "Unknown date")
+              echo "   $tag (created: $tag_date)"
+            done
+          fi
+      
+      - name: List latest tags for each module
+        if: ${{ github.event.inputs.action == 'list-latest' }}
+        run: |
+          echo "🚀 Latest tags for each module:"
+          echo ""
+          
+          for module in add-header cors rate-limit; do
+            echo "📦 $module:"
+            
+            # Find latest tag for each major version
+            for version in v1 v2 v3; do
+              latest=$(git tag -l | grep "^$module/$version\." | sort -V | tail -1 || true)
+              if [ -n "$latest" ]; then
+                tag_date=$(git log -1 --format=%ai $latest 2>/dev/null || echo "Unknown date")
+                echo "   $version: $latest (created: $tag_date)"
+              else
+                echo "   $version: No releases"
+              fi
+            done
+            echo ""
+          done
+      
+      - name: Validate all modules
+        if: ${{ github.event.inputs.action == 'validate-modules' }}
+        run: |
+          echo "🔍 Validating all modules..."
+          echo ""
+          
+          errors=0
+          
+          for module in add-header cors rate-limit; do
+            for version in v1 v2 v3; do
+              module_path="$module/$version"
+              echo "📦 Checking $module_path..."
+              
+              if [ ! -d "$module_path" ]; then
+                echo "   ❌ Directory does not exist"
+                ((errors++))
+                continue
+              fi
+              
+              if [ ! -f "$module_path/go.mod" ]; then
+                echo "   ❌ go.mod not found"
+                ((errors++))
+                continue
+              fi
+              
+              cd "$module_path"
+              
+              # Validate go.mod
+              if ! go mod verify 2>/dev/null; then
+                echo "   ❌ go.mod verification failed"
+                ((errors++))
+                cd ../..
+                continue
+              fi
+              
+              # Check if module name in go.mod matches expected
+              expected_module="github.com/DakshithaS/go-multi-major-modules/$module_path"
+              actual_module=$(grep '^module' go.mod | cut -d' ' -f2)
+              if [ "$actual_module" != "$expected_module" ]; then
+                echo "   ⚠️  Module name mismatch: expected '$expected_module', got '$actual_module'"
+                ((errors++))
+              fi
+              
+              # Run tests if they exist
+              if ls *_test.go 1> /dev/null 2>&1; then
+                if go test ./... > /dev/null 2>&1; then
+                  echo "   ✅ Tests passed"
+                else
+                  echo "   ❌ Tests failed"
+                  ((errors++))
+                fi
+              else
+                echo "   ⚠️  No tests found"
+              fi
+              
+              cd ../..
+            done
+          done
+          
+          echo ""
+          if [ $errors -eq 0 ]; then
+            echo "✅ All modules validated successfully!"
+          else
+            echo "❌ Found $errors errors during validation"
+            exit 1
+          fi
